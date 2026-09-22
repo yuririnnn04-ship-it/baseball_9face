@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>野球選手 好きな顔9選メーカー（写真対応版）</title>
+    <style>
+        body { font-family: sans-serif; max-width: 650px; margin: 20px auto; padding: 20px; background: #fdf2f2; color: #333; }
+        h1 { color: #d9534f; text-align: center; font-size: 1.4rem; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        textarea { width: 100%; height: 160px; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; font-family: monospace; }
+        button { background: #d9534f; color: white; border: none; padding: 12px 20px; font-size: 1rem; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
+        button:hover { background: #c9302c; }
+        .hidden { display: none; }
+        .step-desc { font-size: 0.9rem; color: #666; margin-bottom: 15px; line-height: 1.4; }
+        
+        /* 1次ラウンド用グリッド */
+        .grid-r1 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-height: 350px; overflow-y: auto; padding: 5px; border: 1px solid #eee; border-radius: 6px; margin-bottom: 15px; }
+        .player-checkbox-card { border: 2px solid #ddd; border-radius: 8px; padding: 8px; text-align: center; background: #fafafa; cursor: pointer; transition: 0.2s; }
+        .player-checkbox-card.checked { border-color: #d9534f; background: #fff0f0; }
+        .player-checkbox-card img { width: 80px; height: 80px; object-fit: cover; border-radius: 50%; margin-bottom: 5px; background: #ccc; }
+        .player-checkbox-card div { font-size: 0.85rem; font-weight: bold; }
+
+        /* 2・3次ラウンド（比較用） */
+        .vs-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; }
+        .vs-card { display: flex; align-items: center; gap: 15px; background: #f9f9f9; padding: 12px; border: 2px solid #ddd; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+        .vs-card:hover { background: #ffe6e6; border-color: #d9534f; transform: translateY(-2px); }
+        .vs-card img { width: 70px; height: 70px; object-fit: cover; border-radius: 50%; background: #ccc; }
+        .vs-card span { font-size: 1.1rem; font-weight: bold; }
+
+        /* 最終ベスト9結果画面 */
+        .grid-9 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 15px; }
+        .grid-item { background: #fff0f0; border: 2px dashed #d9534f; padding: 10px; text-align: center; border-radius: 8px; font-weight: bold; font-size: 0.85rem; }
+        .grid-item img { width: 70px; height: 70px; object-fit: cover; border-radius: 50%; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto; background: #ccc; }
+    </style>
+</head>
+<body>
+
+    <h1>⚾ 野球選手 好きな顔9選メーカー（写真版）</h1>
+
+    <!-- 1. 選手登録・セーブ画面 -->
+    <div id="screen-setup" class="card">
+        <h3>1. 選手と画像URLを登録しよう</h3>
+        <p class="step-desc">
+            形式：<b>選手名, 画像URL</b> （1行に1人）<br>
+            ※ネット上の画像（プロフ画像などのリンク）をコピーして貼り付けてね！一度登録すれば自動セーブされます。
+        </p>
+        <textarea id="player-input" placeholder="例：&#10;大谷翔平, https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Shohei_Ohtani_2023_%28cropped%29.jpg/800px-Shohei_Ohtani_2023_%28cropped%29.jpg&#10;選手B, https://example.com/photo2.jpg"></textarea>
+        <button onclick="saveAndStart()">選手をセーブしてスタート！</button>
+    </div>
+
+    <!-- 2. 1次ラウンド画面 -->
+    <div id="screen-round1" class="card hidden">
+        <h3 id="r1-title">【1次ラウンド】予選グループ投票</h3>
+        <p class="step-desc">気になる選手をタップして選ぼう！（チェックが入った状態になります）</p>
+        <div id="r1-list" class="grid-r1"></div>
+        <button onclick="processRound1()">2次ラウンドへ進む ➔</button>
+    </div>
+
+    <!-- 3. 2次・3次ラウンド画面（グループ・タイマン比較） -->
+    <div id="screen-rounds" class="card hidden">
+        <h3 id="rounds-title">【ラウンド進行中】</h3>
+        <p id="rounds-desc" class="step-desc"></p>
+        <div id="rounds-content" class="vs-container"></div>
+    </div>
+
+    <!-- 4. 最終ラウンド（ベスト9発表） -->
+    <div id="screen-final" class="card hidden">
+        <h3>🏆 あなたの「好きな顔ベスト9」完成！</h3>
+        <p class="step-desc">おめでとうございます！比較を繰り返して厳選された9人です。</p>
+        <div id="final-grid" class="grid-9"></div>
+        <button onclick="location.reload()" style="background:#666; margin-top:20px;">最初からやり直す</button>
+    </div>
+
+    <script>
+        let allPlayers = []; // {name, img}
+        let pool = []; 
+        let currentRoundStep = 2; 
+        let matches = [];
+        let currentMatchIdx = 0;
+        let winners = [];
+
+        window.onload = function() {
+            const saved = localStorage.getItem('baseball_players_photo_v1');
+            if (saved) {
+                document.getElementById('player-input').value = saved;
+            }
+        };
+
+        function saveAndStart() {
+            const val = document.getElementById('player-input').value.trim();
+            if (!val) {
+                alert('データを入力してください！');
+                return;
+            }
+            localStorage.setItem('baseball_players_photo_v1', val);
+            
+            allPlayers = [];
+            let lines = val.split('\n');
+            lines.forEach(line => {
+                let parts = line.split(',');
+                if (parts.length >= 2) {
+                    allPlayers.push({
+                        name: parts[0].trim(),
+                        img: parts.slice(1).join(',').trim() // URLにカンマが含まれる場合を考慮
+                    });
+                }
+            });
+            
+            if (allPlayers.length < 9) {
+                alert('ベスト9を選ぶため、9人以上（選手名, 画像URL）登録してください！（現在有効な登録: ' + allPlayers.length + '人）');
+                return;
+            }
+
+            startRound1();
+        }
+
+        function startRound1() {
+            document.getElementById('screen-setup').classList.add('hidden');
+            document.getElementById('screen-round1').classList.remove('hidden');
+
+            let html = '';
+            let shuffled = [...allPlayers].sort(() => Math.random() - 0.5);
+            shuffled.forEach((p, idx) => {
+                html += `
+                    <div class="player-checkbox-card checked" id="card-${idx}" onclick="toggleCheck(${idx})">
+                        <input type="checkbox" id="chk-${idx}" value="${idx}" checked style="display:none;">
+                        <img src="${p.img}" alt="${p.name}" onerror="this.src='https://via.placeholder.com/80?text=NoImage'">
+                        <div>${p.name}</div>
+                    </div>
+                `;
+            });
+            document.getElementById('r1-list').innerHTML = html;
+        }
+
+        function toggleCheck(idx) {
+            let chk = document.getElementById(`chk-${idx}`);
+            let card = document.getElementById(`card-${idx}`);
+            chk.checked = !chk.checked;
+            if (chk.checked) {
+                card.classList.add('checked');
+            } else {
+                card.classList.remove('checked');
+            }
+        }
+
+        function processRound1() {
+            pool = [];
+            allPlayers.forEach((p, idx) => {
+                let chk = document.getElementById(`chk-${idx}`);
+                if (chk && chk.checked) {
+                    pool.push(p);
+                }
+            });
+
+            if (pool.length < 9) {
+                alert('ベスト9を選ぶため、1次ラウンドで少なくとも9人以上選択してください！（現在 ' + pool.length + '人）');
+                return;
+            }
+
+            currentRoundStep = 2;
+            startGroupComparison();
+        }
+
+        function startGroupComparison() {
+            document.getElementById('screen-round1').classList.add('hidden');
+            document.getElementById('screen-rounds').classList.remove('hidden');
+
+            if (currentRoundStep === 2) {
+                document.getElementById('rounds-title').innerText = "【2次ラウンド】グループ比較戦";
+                document.getElementById('rounds-desc').innerText = `残った ${pool.length} 人の選手から、3人グループで「一番好みの顔」を1人ずつタップして選んでね！`;
+            } else {
+                document.getElementById('rounds-title').innerText = "【3次ラウンド】タイマン比較戦";
+                document.getElementById('rounds-desc').innerText = `さらに絞り込まれた精鋭たちを、1対1（タイマン）でじっくり比較！より好きな方をタップ！`;
+            }
+
+            pool.sort(() => Math.random() - 0.5);
+            matches = [];
+            let groupSize = currentRoundStep === 2 ? 3 : 2;
+
+            for (let i = 0; i < pool.length; i += groupSize) {
+                let group = pool.slice(i, i + groupSize);
+                if (group.length > 1) {
+                    matches.push(group);
+                }
+            }
+
+            currentMatchIdx = 0;
+            winners = [];
+            showCurrentMatch();
+        }
+
+        function showCurrentMatch() {
+            if (currentMatchIdx >= matches.length) {
+                pool = [...winners];
+                
+                if (pool.length <= 9) {
+                    showFinalScreen();
+                } else {
+                    if (currentRoundStep === 2 && pool.length <= 12) {
+                        currentRoundStep = 3; 
+                    }
+                    startGroupComparison();
+                }
+                return;
+            }
+
+            let group = matches[currentMatchIdx];
+            let titleText = currentRoundStep === 2 ? `第 ${currentMatchIdx + 1} グループ (3人中1人を選ぶ)` : `第 ${currentMatchIdx + 1} 試合 (タイマン勝負)`;
+            
+            document.getElementById('rounds-title').innerText = currentRoundStep === 2 ? "【2次ラウンド】グループ比較戦" : "【3次ラウンド】タイマン比較戦";
+            document.getElementById('rounds-desc').innerText = `${titleText}  (残り候補: ${pool.length}人)`;
+
+            let html = '';
+            group.forEach(player => {
+                html += `
+                    <div class="vs-card" onclick='selectWinner(${JSON.stringify(player)})'>
+                        <img src="${player.img}" alt="${player.name}" onerror="this.src='https://via.placeholder.com/70?text=NoImage'">
+                        <span>✨ ${player.name}</span>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('rounds-content').innerHTML = html;
+        }
+
+        function selectWinner(chosenPlayer) {
+            winners.push(chosenPlayer);
+            currentMatchIdx++;
+            showCurrentMatch();
+        }
+
+        function showFinalScreen() {
+            document.getElementById('screen-rounds').classList.add('hidden');
+            document.getElementById('screen-final').classList.remove('hidden');
+
+            let finalNine = pool.slice(0, 9);
+            while(finalNine.length < 9) {
+                finalNine.push({name: "枠", img: ""});
+            }
+
+            let html = '';
+            finalNine.forEach((p, idx) => {
+                html += `
+                    <div class="grid-item">
+                        <img src="${p.img}" alt="${p.name}" onerror="this.src='https://via.placeholder.com/70?text=NoImage'">
+                        ${idx + 1}位<br>${p.name}
+                    </div>
+                `;
+            });
+            document.getElementById('final-grid').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
